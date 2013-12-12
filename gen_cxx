@@ -95,13 +95,19 @@ def gen_cxx_callfunc(stream, nwritten, func_name, args):
         if index > 0:
             stream.write(",")
             nwritten += 1
-        if nwritten + len(arg[1]) >= 78:
+        if arg[0] and arg[0].endswith("_p"):
+            cast = "(struct ::%s *) " % arg[0][:-2]
+        else:
+            cast = ""
+        if nwritten + len(cast) + len(arg[1]) >= 78:
             stream.write("\n")
             stream.write("              ")
             nwritten = 14
         elif index > 0:
             stream.write(" ")
             nwritten += 1
+        stream.write(cast)
+        nwritten += len(cast)
         stream.write(arg[1])
         nwritten += len(arg[1])
     stream.write(")")
@@ -193,10 +199,12 @@ def main():
     # Process all class names once, to register all the types
     for struct_name in sorted(interface["classes"]):
         class_name = struct_name.replace("Neubot", "", 1)
-        types[struct_name + "_p"] = "struct ::" + struct_name + " *"
-        types[struct_name] = "struct ::" + struct_name
-        types[class_name + "_p"] = class_name + " *"
-        types[class_name] = class_name
+        ###types[struct_name + "_p"] = "struct ::" + struct_name + " *"
+        ###types[struct_name] = "struct ::" + struct_name
+        ###types[class_name + "_p"] = class_name + " *"
+        ###types[class_name] = class_name
+        types[struct_name + "_p"] = class_name + " *"
+        types[struct_name] = class_name
         stream.write("    class %s;\n" % class_name)
     stream.write("\n")
 

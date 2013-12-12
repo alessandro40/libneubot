@@ -31,7 +31,7 @@ def cxx_type(types, name):
 
 def gen_cxx_func_top(stream, types, retval_type, func_name, arguments):
     stream.write("        ")
-    nwritten = 4
+    nwritten = 8
     if retval_type:
         retval_type = cxx_type(types, retval_type)
         stream.write(retval_type)
@@ -199,10 +199,6 @@ def main():
     # Process all class names once, to register all the types
     for struct_name in sorted(interface["classes"]):
         class_name = struct_name.replace("Neubot", "", 1)
-        ###types[struct_name + "_p"] = "struct ::" + struct_name + " *"
-        ###types[struct_name] = "struct ::" + struct_name
-        ###types[class_name + "_p"] = class_name + " *"
-        ###types[class_name] = class_name
         types[struct_name + "_p"] = class_name + " *"
         types[struct_name] = class_name
         stream.write("    class %s;\n" % class_name)

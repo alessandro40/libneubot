@@ -25,7 +25,7 @@
             ["status_t", "unset_writable"],
             ["void", "set_timeout", ["double", "delta"]],
             ["void", "clear_timeout"],
-            ["void", "close"]
+            ["__destruct__", "close"]
         ],
 
         "NeubotEvent": [

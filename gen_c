@@ -64,19 +64,19 @@ def gen_c_init(stream, types, class_name, init_args):
                init_args
               )
 
-def gen_c_del(stream, types, class_name):
+def gen_c_del(stream, types, class_name, meth_name):
     gen_c_func(
                stream,
                types,
                "void",
-               class_name + "_free",
+               class_name + "_" + meth_name,
                [
                 (class_name + "_p", "self")
                ]
               )
 
 def gen_c_method(stream, types, class_name, retval_type,
-                      meth_name, meth_args):
+                 meth_name, meth_args):
     meth_args.insert(0, (class_name + "_p", "self"))
     gen_c_func(
                stream,
@@ -143,8 +143,8 @@ def main():
         for method_info in interface["classes"][class_name]:
             if method_info[0] == "__construct__":
                 gen_c_init(stream, types, class_name, method_info[1:])
-            elif method_info[0] == "__destroy__":
-                gen_c_del(stream, types, class_name)
+            elif method_info[0] == "__destruct__":
+                gen_c_del(stream, types, class_name, method_info[1])
             else:
                 gen_c_method(stream, types, class_name, method_info[0],
                   method_info[1], method_info[2:])

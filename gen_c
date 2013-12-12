@@ -107,13 +107,22 @@ def main():
     stream.write("#endif\n")
     stream.write("\n")
 
-    stream.write("typedef void (*neubot_slot_t)(void *);\n")
+    stream.write("/* Hooks and slots: */\n")
+    stream.write("\n")
+    stream.write("typedef void (*neubot_hook_vo)(void *);\n")
+    stream.write("typedef void (*neubot_hook_vos)(void *, const char *);\n")
+    stream.write("\n")
+    stream.write("typedef void (*neubot_slot_vo)(void *);\n")
+    stream.write("typedef void (*neubot_slot_vos)(void *, const char *);\n")
     stream.write("\n")
 
     types = {
         "Object": "void *",
         "cstring": "const char *",
-        "slot_t": "neubot_slot_t",
+        "hook_vo": "neubot_hook_vo",
+        "hook_vos": "neubot_hook_vos",
+        "slot_vo": "neubot_slot_vo",
+        "slot_vos": "neubot_slot_vos",
         "status_t": "int",
         "void_p": "void *",
     }

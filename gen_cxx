@@ -29,85 +29,135 @@ import sys
 def cxx_type(types, name):
     return types.get(name, name)
 
-def gen_cxx_init(stream, types, class_name, struct_name, init_args, slots):
-    stream.write("      ")
-    stream.write("%s(" % class_name)
-    for index, arg in enumerate(init_args):
-        argtype, argname = arg
-        argtype = cxx_type(types, argtype)
-        stream.write("%s %s" % (argtype, argname))
-        if index < len(init_args) - 1:
-            stream.write(", ")
-    stream.write(") {\n")
+def gen_cxx_func_top(stream, types, retval_type, func_name, arguments):
     stream.write("        ")
-    stream.write("this->_context = ")
-    stream.write("%s_construct(" % struct_name)
-    for index, arg in enumerate(init_args):
-        stream.write("%s" % arg[1])
-        if index < len(init_args) - 1:
-            stream.write(", ")
-    stream.write(");\n")
-    stream.write("        ")
-    stream.write("if (this->_context == NULL)\n")
-    stream.write("          ")
-    stream.write("throw new std::bad_alloc();\n")
-    for slot in slots:
-        stream.write("        ")
-        stream.write("%s_set_%s_slot(this->_context, " % (struct_name, slot))
-        stream.write("this->%s_callback, this);\n" % slot)
-    stream.write("      };\n")
-    stream.write("\n")
-
-def gen_cxx_slot(stream, class_name, slot_name):
-    stream.write("      ")
-    stream.write("virtual void %s(void) {\n" % slot_name)
-    stream.write("      };\n")
-    stream.write("\n")
-    stream.write("      ")
-    stream.write("static void %s_callback(void *opaque) {\n" % slot_name)
-    stream.write("        ")
-    stream.write("%s *self;\n" % class_name)
-    stream.write("        ")
-    stream.write("self = (%s *) opaque;\n" % class_name)
-    stream.write("        ")
-    stream.write("self->%s();\n" % slot_name)
-    stream.write("      };\n")
-    stream.write("\n")
-
-def gen_cxx_del(stream, class_name, struct_name):
-    stream.write("      ")
-    stream.write("~%s(void) {\n" % class_name)
-    stream.write("        ")
-    stream.write("%s_free(this->_context);\n" % struct_name)
-    stream.write("      };\n")
-    stream.write("\n")
-
-def gen_cxx_method(stream, types, struct_name, retval_type,
-                      meth_name, meth_args):
-    stream.write("      ")
-    stream.write("%s " % cxx_type(types, retval_type))
-    stream.write("%s(" % meth_name)
-    if meth_args:
-        for index, meth_arg in enumerate(meth_args):
-            stream.write("%s %s" % (cxx_type(types, meth_arg[0]), meth_arg[1]))
-            if index < len(meth_args) -1:
-                stream.write(", ")
+    nwritten = 4
+    if retval_type:
+        retval_type = cxx_type(types, retval_type)
+        stream.write(retval_type)
+        nwritten += len(retval_type)
+        if not retval_type.endswith("*"):
+            stream.write(" ")
+            nwritten += 1
+    stream.write(func_name)
+    nwritten += len(func_name)
+    stream.write("(")
+    nwritten += 1
+    if arguments:
+        for index, arg in enumerate(arguments):
+            if index > 0:
+                stream.write(",")
+                nwritten += 1
+            argtype, argname = arg
+            argtype = cxx_type(types, argtype)
+            if nwritten + len(argtype) + len(argname) + 1 >= 75:
+                stream.write("\n")
+                stream.write("          ")
+                nwritten = 10
+            elif index > 0:
+                stream.write(" ")
+                nwritten += 1
+            stream.write(argtype)
+            nwritten += len(argtype)
+            if not argtype.endswith("*"):
+                stream.write(" ")
+                nwritten += 1
+            stream.write(argname)
+            nwritten += len(argname)
     else:
         stream.write("void")
     stream.write(") {\n")
+
+def gen_cxx_func_bottom(stream):
+    stream.write("        };\n")
+    stream.write("\n")
+
+def gen_cxx_slot_vo(stream, class_name, slot_name):
     stream.write("        ")
+    stream.write("virtual void %s(void) {\n" % slot_name)
+    stream.write("        };\n")
+    stream.write("\n")
+    stream.write("        ")
+    stream.write("static void %s_callback(void *opaque) {\n" % slot_name)
+    stream.write("            ")
+    stream.write("%s *self = (%s *) opaque;\n" % (class_name, class_name))
+    stream.write("            ")
+    stream.write("self->%s();\n" % slot_name)
+    stream.write("        };\n")
+    stream.write("\n")
+
+def gen_cxx_callfunc(stream, nwritten, func_name, args):
+    stream.write(func_name)
+    nwritten += len(func_name)
+    stream.write("(")
+    nwritten += 1
+    for index, arg in enumerate(args):
+        if index > 0:
+            stream.write(",")
+            nwritten += 1
+        if nwritten + len(arg[1]) >= 78:
+            stream.write("\n")
+            stream.write("              ")
+            nwritten = 14
+        elif index > 0:
+            stream.write(" ")
+            nwritten += 1
+        stream.write(arg[1])
+        nwritten += len(arg[1])
+    stream.write(")")
+
+def gen_cxx_init(stream, types, class_name, struct_name, init_args):
+    external_args = []
+    nargs = []
+    slots_objs = 0
+    for arg in init_args:
+        if arg[0] == "slot_vo":
+            gen_cxx_slot_vo(stream, class_name, arg[1])
+            nargs.append((None, "this->" + arg[1] + "_callback"))
+        elif arg[0] == "Object":
+            nargs.append((None, "this"))
+            slots_objs += 1
+        else:
+            external_args.append(arg)
+            nargs.append(arg)
+    if slots_objs > 1:
+        raise RuntimeError("There must be only one slot object")
+    gen_cxx_func_top(stream, types, None, class_name, external_args)
+    stream.write("            ")
+    nwritten = 12
+    stream.write("this->_context = ")
+    nwritten += 17
+    gen_cxx_callfunc(stream, nwritten, "%s_construct" % struct_name, nargs)
+    stream.write(";\n")
+    stream.write("            ")
+    stream.write("if (this->_context == NULL)\n")
+    stream.write("                ")
+    stream.write("throw new std::bad_alloc();\n")
+    gen_cxx_func_bottom(stream);
+
+def gen_cxx_del(stream, class_name, struct_name, func_name):
+    stream.write("        ")
+    stream.write("~%s(void) {\n" % class_name)
+    stream.write("            ")
+    stream.write("%s_%s(this->_context);\n" % (struct_name, func_name))
+    stream.write("        };\n")
+    stream.write("\n")
+
+def gen_cxx_method(stream, types, struct_name, retval_type,
+                   meth_name, meth_args):
+    gen_cxx_func_top(stream, types, retval_type, meth_name, meth_args)
+    stream.write("            ")
+    nwritten = 12
     if retval_type != "void":
         stream.write("return (")
-    stream.write("%s_%s(this->_context" % (struct_name, meth_name))
-    if meth_args:
-        for meth_arg in meth_args:
-            stream.write(", %s" % meth_arg[1])
-    stream.write(")")
+        nwritten += 8
+    meth_args.insert(0, (None, "this->_context"))
+    gen_cxx_callfunc(stream, nwritten, "%s_%s" % (struct_name, meth_name),
+                     meth_args)
     if retval_type != "void":
         stream.write(")")
     stream.write(";\n")
-    stream.write("      };\n")
-    stream.write("\n")
+    gen_cxx_func_bottom(stream);
 
 def main():
     path = sys.argv[1]
@@ -121,12 +171,21 @@ def main():
     stream.write("//\n")
     stream.write("\n")
 
+    stream.write("#include <neubot.h>\n")
+    stream.write("#include <stdlib.h>\n")
+    stream.write("#include <new>\n")
+    stream.write("\n")
+
     stream.write("namespace Neubot {\n")
     stream.write("\n")
 
     types = {
         "Object": "void *",
         "cstring": "const char *",
+        "hook_vo": "neubot_hook_vo",
+        "hook_vos": "neubot_hook_vos",
+        "slot_vo": "neubot_slot_vo",
+        "slot_vos": "neubot_slot_vos",
         "status_t": "int",
         "void_p": "void *",
     }
@@ -138,40 +197,34 @@ def main():
         types[struct_name] = "struct ::" + struct_name
         types[class_name + "_p"] = class_name + " *"
         types[class_name] = class_name
+        stream.write("    class %s;\n" % class_name)
+    stream.write("\n")
 
     for struct_name in sorted(interface["classes"]):
         class_name = struct_name.replace("Neubot", "", 1)
         struct_name = "::" + struct_name
-        stream.write("  class %s {\n" % class_name)
-        stream.write("      struct %s *_context;\n" % struct_name);
+        stream.write("    class %s {\n" % class_name)
+        stream.write("        struct %s *_context;\n" % struct_name);
         stream.write("\n")
 
-        stream.write("    public:\n")
+        stream.write("      public:\n")
 
-        stream.write("      operator struct %s *() {\n" % struct_name)
-        stream.write("        return (this->_context);\n")
-        stream.write("      }\n")
+        stream.write("        operator struct %s *(void) {\n" % struct_name)
+        stream.write("            return (this->_context);\n")
+        stream.write("        }\n")
         stream.write("\n")
-
-        ctor = None
-        slots = []
 
         for method_info in interface["classes"][struct_name[2:]]:
             if method_info[0] == "__construct__":
-                ctor = method_info[1:]
-            elif method_info[0] == "__slot__":
-                gen_cxx_slot(stream, class_name, method_info[1])
-                slots.append(method_info[1])
-            elif method_info[0] == "__destroy__":
-                gen_cxx_del(stream, class_name, struct_name)
+                gen_cxx_init(stream, types, class_name, struct_name,
+                  method_info[1:])
+            elif method_info[0] == "__destruct__":
+                gen_cxx_del(stream, class_name, struct_name, method_info[1])
             else:
                 gen_cxx_method(stream, types, struct_name, method_info[0],
                   method_info[1], method_info[2:])
 
-        if ctor != None:
-            gen_cxx_init(stream, types, class_name, struct_name, ctor, slots)
-
-        stream.write("  };\n")
+        stream.write("    };\n")
         stream.write("\n")
 
     stream.write("};\n")

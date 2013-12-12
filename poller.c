@@ -351,22 +351,32 @@ NeubotPoller_sched(struct NeubotPoller *self, double delta,
  * less efficient than the Pollable interface.
  */
 
-struct NeubotEvent *
+int
 NeubotPoller_defer_read(struct NeubotPoller *self, long long fileno,
     neubot_hook_vo callback, neubot_hook_vo timeback, void *opaque,
     double timeout)
 {
-	return (NeubotEvent_construct(self, fileno, callback,
-            timeback, opaque, timeout, EV_READ));
+	struct NeubotEvent *nevp;
+
+	nevp = NeubotEvent_construct(self, fileno, callback,
+            timeback, opaque, timeout, EV_READ);
+	if (nevp == NULL)
+		return (-1);
+	return (0);
 }
 
-struct NeubotEvent *
+int
 NeubotPoller_defer_write(struct NeubotPoller *self, long long fileno,
     neubot_hook_vo callback, neubot_hook_vo timeback, void *opaque,
     double timeout)
 {
-	return (NeubotEvent_construct(self, fileno, callback,
-            timeback, opaque, timeout, EV_WRITE));
+	struct NeubotEvent *nevp;
+
+	nevp = NeubotEvent_construct(self, fileno, callback,
+            timeback, opaque, timeout, EV_WRITE);
+	if (nevp == NULL)
+		return (-1);
+	return (0);
 }
 
 static void

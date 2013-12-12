@@ -41,13 +41,16 @@ def gen_c_func(stream, types, retval_type, func_name, meth_args):
     if meth_args:
         for index, meth_arg in enumerate(meth_args):
             if index > 0:
-                stream.write(", ")
-                nwritten += 2
+                stream.write(",")
+                nwritten += 1
             argtype = c_type(types, meth_arg[0])
             if nwritten + len(argtype) >= 78:
                 stream.write("\n")
                 stream.write("    ")
                 nwritten = 4
+            elif index > 0:
+                stream.write(" ")
+                nwritten += 1
             stream.write(argtype)
             nwritten += len(argtype)
     else:

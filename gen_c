@@ -64,19 +64,6 @@ def gen_c_init(stream, types, class_name, init_args):
                init_args
               )
 
-def gen_c_slot(stream, types, class_name, slot_name):
-    gen_c_func(
-               stream,
-               types,
-               "void",
-               class_name + "_set_%s_slot" % slot_name,
-               [
-                (class_name + "_p", "self"),
-                ("neubot_slot_t", "slot"),
-                ("void_p", "opaque")
-               ]
-              )
-
 def gen_c_del(stream, types, class_name):
     gen_c_func(
                stream,
@@ -126,6 +113,7 @@ def main():
     types = {
         "Object": "void *",
         "cstring": "const char *",
+        "slot_t": "neubot_slot_t",
         "status_t": "int",
         "void_p": "void *",
     }
@@ -146,8 +134,6 @@ def main():
         for method_info in interface["classes"][class_name]:
             if method_info[0] == "__construct__":
                 gen_c_init(stream, types, class_name, method_info[1:])
-            elif method_info[0] == "__slot__":
-                gen_c_slot(stream, types, class_name, method_info[1])
             elif method_info[0] == "__destroy__":
                 gen_c_del(stream, types, class_name)
             else:

@@ -28,18 +28,14 @@
             ["__destruct__", "close"]
         ],
 
-        "NeubotEvent": [
-            ["void", "cancel"]
-        ],
-
         "NeubotPoller": [
             ["__construct__"],
             ["status_t", "sched", ["double", "delta"], ["hook_vo", "callback"],
                 ["Object", "opaque"]],
-            ["NeubotEvent_p", "defer_read", ["long long", "fileno"],
+            ["status_t", "defer_read", ["long long", "fileno"],
                 ["hook_vo", "handle_ok"], ["hook_vo", "handle_timeout"],
                 ["Object", "opaque"], ["double", "timeout"]],
-            ["NeubotEvent_p", "defer_write", ["long long", "fileno"],
+            ["status_t", "defer_write", ["long long", "fileno"],
                 ["hook_vo", "handle_ok"], ["hook_vo", "handle_timeout"],
                 ["Object", "opaque"], ["double", "timeout"]],
             ["status_t", "resolve", ["int", "use_ipv6"], ["cstring", "name"],

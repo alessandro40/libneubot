@@ -22,16 +22,13 @@
 #
 
 echo "Generate: neubot.h"
-
 ./gen_c libneubot.json > neubot.h
 
 echo "Generate: libneubot.py"
+./gen_python libneubot.json > libneubot.py || true
 
-./gen_py libneubot.json > libneubot.py || true
-
-echo "Generate: LibNeubot.java"
-
-./gen_java libneubot.json > LibNeubot.java || true
+#echo "Generate: LibNeubot.java"
+#./gen_java libneubot.json > LibNeubot.java || true
 
 SYSTEM=$(uname)
 

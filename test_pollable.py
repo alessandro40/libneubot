@@ -6,39 +6,31 @@
 import os
 import sys
 
-import libneubot
+from libneubot import Pollable
+from libneubot import Poller
 
-def read_callback(pollable):
-    """ Read callback """
-    data = os.read(0, 1024)
-    if not data:
-        libneubot.NeubotPollable_close(pollable)
-        return
-    sys.stdout.write(data)
+class EchoPollable(Pollable):
 
-def write_callback(pollable):
-    """ Write callback """
+    def __init__(self, poller):
+        Pollable.__init__(self, poller)
+        self.poller = poller
 
-def close_callback(pollable):
-    """ Close callback """
-    poller = libneubot.NeubotPollable_poller(pollable)
-    libneubot.NeubotPoller_break_loop(poller)
+    def handle_read(self):
+        data = os.read(0, 1024)
+        if not data:
+            self.close()
+            return
+        sys.stdout.write(data)
 
-READ_CALLBACK = libneubot.NEUBOT_POLLABLE_CALLBACK(read_callback)
-WRITE_CALLBACK = libneubot.NEUBOT_POLLABLE_CALLBACK(write_callback)
-CLOSE_CALLBACK = libneubot.NEUBOT_POLLABLE_CALLBACK(close_callback)
+    def handle_close(self):
+        self.poller.break_loop()
 
 def main():
-    """ Main function """
-
-    poller = libneubot.NeubotPoller_construct()
-
-    pollable = libneubot.NeubotPollable_construct(poller, READ_CALLBACK,
-      WRITE_CALLBACK, CLOSE_CALLBACK, None)
-    libneubot.NeubotPollable_attach(pollable, 0)
-    libneubot.NeubotPollable_set_readable(pollable)
-
-    libneubot.NeubotPoller_loop(poller)
+    poller = Poller()
+    pollable = EchoPollable(poller)
+    pollable.attach(0)
+    pollable.set_readable()
+    poller.loop()
 
 if __name__ == "__main__":
     main()

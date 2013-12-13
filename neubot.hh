@@ -132,20 +132,8 @@ namespace Neubot {
               opaque));
         };
 
-        int defer_read(long long fileno, neubot_hook_vo handle_ok,
-          neubot_hook_vo handle_timeout, void *opaque, double timeout) {
-            return (::NeubotPoller_defer_read(this->_context, fileno,
-              handle_ok, handle_timeout, opaque, timeout));
-        };
-
-        int defer_write(long long fileno, neubot_hook_vo handle_ok,
-          neubot_hook_vo handle_timeout, void *opaque, double timeout) {
-            return (::NeubotPoller_defer_write(this->_context, fileno,
-              handle_ok, handle_timeout, opaque, timeout));
-        };
-
-        int resolve(int use_ipv6, const char *name, neubot_hook_vos callback,
-          void *opaque) {
+        int resolve(int use_ipv6, const char *name,
+          neubot_hook_vos callback, void *opaque) {
             return (::NeubotPoller_resolve(this->_context, use_ipv6, name,
               callback, opaque));
         };

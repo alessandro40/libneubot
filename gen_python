@@ -29,6 +29,40 @@ import sys
 def python_type(types, name):
     return types.get(name, name)
 
+def gen_python_imports(stream):
+    stream.write("import ctypes\n")
+    stream.write("import sys\n")
+    stream.write("\n")
+    stream.write('if sys.platform == "darwin":\n')
+    stream.write('    LIBNEUBOT_NAME = "/usr/local/lib/libneubot.dylib.1"\n')
+    stream.write("else:\n")
+    stream.write('    LIBNEUBOT_NAME = "/usr/local/lib/libneubot.so.1"\n')
+    stream.write("\n")
+    stream.write("LIBNEUBOT = ctypes.CDLL(LIBNEUBOT_NAME)\n")
+
+def gen_python_prototype(stream, types, class_name, method_info):
+    if method_info[0] == "__construct__":
+        retval = class_name + "_p"
+        funcname = class_name + "_construct"
+        args = method_info[1:]
+    elif method_info[0] == "__destruct__":
+        retval = "void"
+        funcname = class_name + "_" + method_info[1]
+        args = [(class_name + "_p", "self")]
+    else:
+        retval = method_info[0]
+        funcname = class_name + "_" + method_info[1]
+        args = method_info[2:]
+        args.insert(0, (class_name + "_p", "self"))
+    if retval != "void":
+        stream.write("LIBNEUBOT.%s.restype = %s\n" % (funcname,
+          python_type(types, retval)))
+    stream.write("LIBNEUBOT.%s.argtypes = (\n" % funcname)
+    for argtype, _ in args:
+        argtype = python_type(types, argtype)
+        stream.write("    %s,\n" % argtype)
+    stream.write(")\n")
+
 def gen_python_func_top(stream, types, retval_type, func_name, arguments):
     stream.write("    ")
     nwritten = 4
@@ -62,8 +96,14 @@ def gen_python_func_bottom(stream):
 
 def gen_python_slot_vo(stream, class_name, slot_name):
     stream.write("    ")
-    stream.write("def %s(void):\n" % slot_name)
+    stream.write("def %s(self):\n" % slot_name)
     stream.write("        pass\n")
+    stream.write("\n")
+    stream.write("    ")
+    stream.write("@staticmethod\n")
+    stream.write("    ")
+    stream.write("def %s__(opaque):\n" % slot_name)
+    stream.write("        opaque.%s()\n" % slot_name)
     stream.write("\n")
 
 def gen_python_callfunc(stream, nwritten, func_name, args):
@@ -108,11 +148,11 @@ def gen_python_init(stream, types, class_name, struct_name, init_args):
     gen_python_func_top(stream, types, None, "__init__", external_args)
     if slots_objs == 1:
         stream.write("        ")
-        stream.write("self._c_obj = ctypes.py_object(self)\n")
+        stream.write("self._c_self = ctypes.py_object(self)\n")
         for arg in init_args:
             if arg[0] == "slot_vo":
                 stream.write("        ")
-                stream.write("self._c_%s = NEUBOT_SLOT_VO(self.%s)\n" % (
+                stream.write("self._c_%s = NEUBOT_SLOT_VO(self.%s__)\n" % (
                   arg[1], arg[1]))
     stream.write("        ")
     nwritten = 8
@@ -132,12 +172,39 @@ def gen_python_method(stream, types, struct_name, retval_type,
                    meth_name, meth_args):
     meth_args.insert(0, (None, "self"))
     gen_python_func_top(stream, types, retval_type, meth_name, meth_args)
+    meth_args[0] = (None, "self._context")
+
+    new_args = []
+    hook_obj = None
+    hook_vo = None
+    for argtype, argname in meth_args:
+        if argtype == "Object":
+            if hook_obj != None:
+                raise RuntimeError("More than one hook object")
+            hook_obj = argname
+            new_args.append((None, "context"))
+        elif argtype == "hook_vo":
+            if hook_vo != None:
+                raise RuntimeError("More than one hook_vo")
+            hook_vo = argname
+            new_args.append((None, "context.cfunc"))
+        else:
+            new_args.append((argtype, argname))
+    if hook_obj and hook_vo:
+        stream.write("        ")
+        stream.write("context = NeubotHookVoContext(%s, %s,\n" % (hook_vo,
+          hook_obj))
+        stream.write("          ")
+        stream.write("self.%s_callback__)\n" % meth_name)
+        stream.write("        ")
+        stream.write("LIBNEUBOT_OBJECTS.add(context)\n")
+        meth_args = new_args
+
     stream.write("        ")
     nwritten = 8
     if retval_type != "void":
         stream.write("retval = ")
         nwritten += 9
-    meth_args[0] = (None, "self._context")
     gen_python_callfunc(stream, nwritten, "LIBNEUBOT.%s_%s" %
       (struct_name, meth_name), meth_args)
     stream.write("\n")
@@ -149,6 +216,17 @@ def gen_python_method(stream, types, struct_name, retval_type,
     if retval_type != "void":
         stream.write("        ")
         stream.write("return retval\n")
+
+    if hook_obj and hook_vo:
+        stream.write("\n")
+        stream.write("    ")
+        stream.write("@staticmethod\n")
+        stream.write("    ")
+        stream.write("def %s_callback__(context):\n" % meth_name)
+        stream.write("        ")
+        stream.write("LIBNEUBOT_OBJECTS.remove(context)\n")
+        stream.write("        ")
+        stream.write("context.callback(context.opaque)\n")
 
 def main():
     path = sys.argv[1]
@@ -162,32 +240,57 @@ def main():
     stream.write("#\n")
     stream.write("\n")
 
-    stream.write("import ctypes\n")
+    stream.write("# pylint: disable = C0111\n")
     stream.write("\n")
+
+    gen_python_imports(stream)
 
     stream.write("LIBNEUBOT_OBJECTS = set()\n")
     stream.write("\n")
 
     stream.write("NEUBOT_SLOT_VO = ctypes.CFUNCTYPE(None, ctypes.py_object)\n")
+    stream.write("NEUBOT_SLOT_VOS = ctypes.CFUNCTYPE(None, ctypes.py_object,\n")
+    stream.write("  ctypes.c_char_p)\n")
+    stream.write("\n")
+    stream.write("NEUBOT_HOOK_VO = ctypes.CFUNCTYPE(None, ctypes.py_object)\n")
+    stream.write("NEUBOT_HOOK_VOS = ctypes.CFUNCTYPE(None, ctypes.py_object,\n")
+    stream.write("  ctypes.c_char_p)\n")
+    stream.write("\n")
+
+    stream.write("class NeubotHookVoContext(object):\n")
+    stream.write("    def __init__(self, callback, opaque, cfunc):\n")
+    stream.write("        self.callback = callback\n")
+    stream.write("        self.opaque = opaque\n")
+    stream.write("        self.cfunc = NEUBOT_HOOK_VO(cfunc)\n")
     stream.write("\n")
 
     types = {
-        "Object": "void *",
-        "cstring": "const char *",
-        "hook_vo": "neubot_hook_vo",
-        "hook_vos": "neubot_hook_vos",
-        "slot_vo": "neubot_slot_vo",
-        "slot_vos": "neubot_slot_vos",
-        "status_t": "int",
-        "void_p": "void *",
+        "Object": "ctypes.py_object",
+        "cstring": "ctypes.c_char_p",
+        "double": "ctypes.c_double",
+        "hook_vo": "NEUBOT_HOOK_VO",
+        "hook_vos": "NEUBOT_HOOK_VOS",
+        "int": "ctypes.c_int",
+        "long long": "ctypes.c_longlong",
+        "slot_vo": "NEUBOT_SLOT_VO",
+        "slot_vos": "NEUBOT_SLOT_VOS",
+        "status_t": "ctypes.c_int",
+        "void_p": "ctypes.c_void_p",
     }
 
     # Process all class names once, to register all the types
     for struct_name in sorted(interface["classes"]):
         class_name = struct_name.replace("Neubot", "", 1)
-        types[struct_name + "_p"] = class_name + " *"
-        types[struct_name] = class_name
+        types[struct_name + "_p"] = "ctypes.c_void_p"
 
+    # Process once more, to generate all the prototypes
+    for struct_name in sorted(interface["classes"]):
+        class_name = struct_name.replace("Neubot", "", 1)
+        for method_info in interface["classes"][struct_name]:
+            gen_python_prototype(stream, types, struct_name, method_info)
+            stream.write("\n")
+
+    # Finally, generate the wrapper classes
     for struct_name in sorted(interface["classes"]):
         class_name = struct_name.replace("Neubot", "", 1)
         stream.write("class %s(object):\n" % class_name)

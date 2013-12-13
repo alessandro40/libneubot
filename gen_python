@@ -26,97 +26,129 @@
 import json
 import sys
 
-def pylang_type(types, name):
+def python_type(types, name):
     return types.get(name, name)
 
-def gen_pylang_init(stream, types, class_name, init_args, slots):
+def gen_python_func_top(stream, types, retval_type, func_name, arguments):
     stream.write("    ")
-    stream.write("def __init__(self")
-    for arg in init_args:
-        stream.write(", %s" % arg[1])
+    nwritten = 4
+    stream.write("def ")
+    nwritten += 4
+    stream.write(func_name)
+    nwritten += len(func_name)
+    stream.write("(")
+    nwritten += 1
+    if arguments:
+        for index, arg in enumerate(arguments):
+            if index > 0:
+                stream.write(",")
+                nwritten += 1
+            _, argname = arg
+            if nwritten + len(argname) >= 75:
+                stream.write("\n")
+                stream.write("          ")
+                nwritten = 10
+            elif index > 0:
+                stream.write(" ")
+                nwritten += 1
+            stream.write(argname)
+            nwritten += len(argname)
+    else:
+        stream.write("")
     stream.write("):\n")
+
+def gen_python_func_bottom(stream):
+    stream.write("\n")
+
+def gen_python_slot_vo(stream, class_name, slot_name):
+    stream.write("    ")
+    stream.write("def %s(void):\n" % slot_name)
+    stream.write("        pass\n")
+    stream.write("\n")
+
+def gen_python_callfunc(stream, nwritten, func_name, args):
+    stream.write(func_name)
+    nwritten += len(func_name)
+    stream.write("(")
+    nwritten += 1
+    for index, arg in enumerate(args):
+        if index > 0:
+            stream.write(",")
+            nwritten += 1
+        if arg[0] and arg[0].endswith("_p"):
+            arg[1] = arg[1] + "._context"
+        if nwritten + len(arg[1]) >= 78:
+            stream.write("\n")
+            stream.write("          ")
+            nwritten = 10
+        elif index > 0:
+            stream.write(" ")
+            nwritten += 1
+        stream.write(arg[1])
+        nwritten += len(arg[1])
+    stream.write(")")
+
+def gen_python_init(stream, types, class_name, struct_name, init_args):
+    external_args = []
+    nargs = []
+    slots_objs = 0
+    for arg in init_args:
+        if arg[0] == "slot_vo":
+            gen_python_slot_vo(stream, class_name, arg[1])
+            nargs.append((None, "self._c_" + arg[1]))
+        elif arg[0] == "Object":
+            nargs.append((None, "self._c_self"))
+            slots_objs += 1
+        else:
+            external_args.append(arg)
+            nargs.append(arg)
+    if slots_objs > 1:
+        raise RuntimeError("There must be only one slot object")
+    external_args.insert(0, (None, "self"))
+    gen_python_func_top(stream, types, None, "__init__", external_args)
+    if slots_objs == 1:
+        stream.write("        ")
+        stream.write("self._c_obj = ctypes.py_object(self)\n")
+        for arg in init_args:
+            if arg[0] == "slot_vo":
+                stream.write("        ")
+                stream.write("self._c_%s = NEUBOT_SLOT_VO(self.%s)\n" % (
+                  arg[1], arg[1]))
     stream.write("        ")
+    nwritten = 8
     stream.write("self._context = ")
-    stream.write("LIBNEUBOT.%s_construct(" % class_name)
-    for index, arg in enumerate(init_args):
-        argtype, argname = arg
-        argtype = pylang_type(types, argtype)
-        stream.write("%s(%s)" % (argtype, argname))
-        if index < len(init_args) - 1:
-            stream.write(", ")
-    stream.write(")\n")
+    nwritten += 17
+    gen_python_callfunc(stream, nwritten, "LIBNEUBOT.%s_construct"
+      % struct_name, nargs)
+    stream.write("\n")
     stream.write("        ")
     stream.write("if not self._context:\n")
     stream.write("            ")
     stream.write("raise RuntimeError('out of memory')\n")
-    if slots:
-        stream.write("        ")
-        stream.write("self._pyself = ctypes.py_object(self)\n")
-        stream.write("        ")
-        stream.write("self._cb_type = ctypes.CFUNCTYPE(None, ")
-        stream.write("ctypes.py_object)\n")
-    for slot in slots:
-        stream.write("        ")
-        stream.write("self._%s_cb = self._cb_type(self._%s)\n" % (
-          slot, slot))
-        stream.write("        ")
-        stream.write("LIBNEUBOT.%s_set_%s_slot(self._context, " % (class_name,
-                     slot))
-        stream.write("self._%s_cb, self._pyself)\n" % slot)
     stream.write("        ")
     stream.write("LIBNEUBOT_OBJECTS.add(self)\n")
-    stream.write("\n")
 
-def gen_pylang_slot(stream, class_name, slot_name):
-    stream.write("    ")
-    stream.write("def %s(self):\n" % slot_name)
+def gen_python_method(stream, types, struct_name, retval_type,
+                   meth_name, meth_args):
+    meth_args.insert(0, (None, "self"))
+    gen_python_func_top(stream, types, retval_type, meth_name, meth_args)
     stream.write("        ")
-    stream.write("pass\n")
-    stream.write("\n")
-    stream.write("    ")
-    stream.write("@staticmethod\n")
-    stream.write("    ")
-    stream.write("def _%s(opaque):\n" % slot_name)
-    stream.write("        ")
-    stream.write("self = ctypes.cast(opaque, ctypes.py_object)\n")
-    stream.write("        ")
-    stream.write("self.%s()\n" % slot_name)
-    stream.write("\n")
-
-def gen_pylang_del(stream, class_name):
-    stream.write("    ")
-    stream.write("def free(self):\n")
-    stream.write("        ")
-    stream.write("LIBNEUBOT.%s_free(self._context)\n" % class_name)
-    stream.write("        ")
-    stream.write("LIBNEUBOT_OBJECTS.remove(self)\n")
-    stream.write("\n")
-
-def gen_pylang_method(stream, types, class_name, retval_type,
-                      meth_name, meth_args):
-    stream.write("    ")
-    stream.write("def %s(self" % meth_name)
-    if meth_args:
-        for meth_arg in meth_args:
-            stream.write(", %s" % meth_arg[1])
-    stream.write("):\n")
-    stream.write("        ")
+    nwritten = 8
     if retval_type != "void":
-        stream.write("result = ")
-    stream.write("LIBNEUBOT.%s_%s(self._context" % (class_name, meth_name))
-    if meth_args:
-        for meth_arg in meth_args:
-            stream.write(", %s" % meth_arg[1])
-    stream.write(")\n")
-    if retval_type != "void":
-        if retval_type == "status_t":
-            stream.write("        ")
-            stream.write("if result != 0:\n")
-            stream.write("            ")
-            stream.write("raise RuntimeError('%s failed')\n" % meth_name)
+        stream.write("retval = ")
+        nwritten += 9
+    meth_args[0] = (None, "self._context")
+    gen_python_callfunc(stream, nwritten, "LIBNEUBOT.%s_%s" %
+      (struct_name, meth_name), meth_args)
+    stream.write("\n")
+    if retval_type == "status_t":
         stream.write("        ")
-        stream.write("return result\n")
-    stream.write("\n")
+        stream.write("if retval != 0:\n")
+        stream.write("            ")
+        stream.write("raise RuntimeError('%s failed')\n" % meth_name)
+    if retval_type != "void":
+        stream.write("        ")
+        stream.write("return retval\n")
 
 def main():
     path = sys.argv[1]
@@ -130,45 +162,50 @@ def main():
     stream.write("#\n")
     stream.write("\n")
 
+    stream.write("import ctypes\n")
+    stream.write("\n")
+
+    stream.write("LIBNEUBOT_OBJECTS = set()\n")
+    stream.write("\n")
+
+    stream.write("NEUBOT_SLOT_VO = ctypes.CFUNCTYPE(None, ctypes.py_object)\n")
+    stream.write("\n")
+
     types = {
-        "Object": "ctypes.py_object",
-        "cstring": "ctypes.c_char_p",
-        "status_t": "ctypes.c_int",
-        "void_p": "ctypes.c_void_p",
+        "Object": "void *",
+        "cstring": "const char *",
+        "hook_vo": "neubot_hook_vo",
+        "hook_vos": "neubot_hook_vos",
+        "slot_vo": "neubot_slot_vo",
+        "slot_vos": "neubot_slot_vos",
+        "status_t": "int",
+        "void_p": "void *",
     }
 
-    # Process all class names once, to register all the cast functions
-    for class_name in sorted(interface["classes"]):
-        stream.write("def %s_p(sth):\n" % class_name)
-        stream.write("    ")
-        stream.write("if sth.__class__.__name__ != '%s':\n" % class_name)
-        stream.write("        ")
-        stream.write("raise RuntimeError('type is not %s')\n" % class_name)
-        stream.write("    ")
-        stream.write("return sth._context\n")
-        stream.write("\n")
+    # Process all class names once, to register all the types
+    for struct_name in sorted(interface["classes"]):
+        class_name = struct_name.replace("Neubot", "", 1)
+        types[struct_name + "_p"] = class_name + " *"
+        types[struct_name] = class_name
 
-    for class_name in sorted(interface["classes"]):
+    for struct_name in sorted(interface["classes"]):
+        class_name = struct_name.replace("Neubot", "", 1)
         stream.write("class %s(object):\n" % class_name)
         stream.write("\n")
 
-        ctor = None
-        slots = []
-
-        for method_info in interface["classes"][class_name]:
+        for method_info in interface["classes"][struct_name]:
             if method_info[0] == "__construct__":
-                ctor = method_info[1:]
-            elif method_info[0] == "__slot__":
-                gen_pylang_slot(stream, class_name, method_info[1])
-                slots.append(method_info[1])
-            elif method_info[0] == "__destroy__":
-                gen_pylang_del(stream, class_name)
-            else:
-                gen_pylang_method(stream, types, class_name, method_info[0],
+                gen_python_init(stream, types, class_name, struct_name,
+                  method_info[1:])
+            elif method_info[0] == "__destruct__":
+                gen_python_method(stream, types, struct_name, "void",
                   method_info[1], method_info[2:])
-
-        if ctor != None:
-            gen_pylang_init(stream, types, class_name, ctor, slots)
+                stream.write("        ")
+                stream.write("LIBNEUBOT_OBJECTS.remove(self)\n")
+            else:
+                gen_python_method(stream, types, struct_name, method_info[0],
+                  method_info[1], method_info[2:])
+            gen_python_func_bottom(stream);
 
 if __name__ == "__main__":
     main()

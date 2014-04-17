@@ -533,6 +533,11 @@
 
 #endif							/* } */
 
+/* If Lua is compiled for Android with NDK-build */
+#ifdef __ANDROID__
+#define getlocaledecpoint() '.'
+#endif
+
 /* }================================================================== */
 
 

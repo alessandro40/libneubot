@@ -1,8 +1,13 @@
-LOCAL_PATH := $(call my-dir)
+LIBNEUBOT_LOCAL_PATH := $(call my-dir)
 
+include $(call all-subdir-makefiles)
+
+LOCAL_PATH := $(LIBNEUBOT_LOCAL_PATH)
 include $(CLEAR_VARS)
 
-LOCAL_STATIC_LIBRARIES :=event2
+LOCAL_STATIC_LIBRARIES :=\
+	event2\
+	lua
 
 LOCAL_MODULE:= neubot
 LOCAL_MODULE_TAGS:= optional
